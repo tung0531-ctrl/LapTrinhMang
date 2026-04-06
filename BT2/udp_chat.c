@@ -12,7 +12,6 @@
 
 #define BUFFER_SIZE 2048
 
-/* Đưa socket UDP sang non-blocking để ứng dụng vừa gửi vừa nhận không bị chặn. */
 static int set_non_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {
@@ -27,7 +26,6 @@ static int set_non_blocking(int fd) {
 }
 
 int main(int argc, char *argv[]) {
-    /* Ứng dụng cần cổng nhận, IP đích và cổng đích theo đúng đề bài. */
     if (argc != 4) {
         fprintf(stderr, "Usage: %s <port_s> <ip_d> <port_d>\n", argv[0]);
         return EXIT_FAILURE;
@@ -40,7 +38,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Tạo socket UDP và cấu hình non-blocking cho toàn bộ phiên chat. */
     int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sockfd < 0) {
         perror("socket() failed");
@@ -53,7 +50,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Bind cổng nguồn để chương trình có thể nhận dữ liệu từ phía còn lại. */
     struct sockaddr_in local_addr;
     memset(&local_addr, 0, sizeof(local_addr));
     local_addr.sin_family = AF_INET;
@@ -66,7 +62,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Lưu sẵn địa chỉ đích để mỗi lần gửi không phải nhập lại. */
     struct sockaddr_in destination_addr;
     memset(&destination_addr, 0, sizeof(destination_addr));
     destination_addr.sin_family = AF_INET;
@@ -82,7 +77,6 @@ int main(int argc, char *argv[]) {
     printf("Nhap noi dung va nhan Enter de gui. Nhan Ctrl+D de thoat.\n");
 
     while (1) {
-        /* Theo dõi đồng thời bàn phím và socket UDP bằng select(). */
         fd_set read_set;
         FD_ZERO(&read_set);
         FD_SET(sockfd, &read_set);
@@ -97,7 +91,6 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        /* Nếu socket có dữ liệu, nhận hết các gói đang chờ rồi in ra màn hình. */
         if (FD_ISSET(sockfd, &read_set)) {
             while (1) {
                 char buffer[BUFFER_SIZE];
@@ -132,7 +125,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /* Nếu người dùng nhập từ bàn phím, gửi ngay nội dung sang địa chỉ đích. */
         if (FD_ISSET(STDIN_FILENO, &read_set)) {
             char buffer[BUFFER_SIZE];
             if (fgets(buffer, sizeof(buffer), stdin) == NULL) {

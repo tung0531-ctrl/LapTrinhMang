@@ -38,7 +38,6 @@ struct client_session {
     char mssv[32];
 };
 
-/* Đưa socket sang chế độ non-blocking để có thể phục vụ nhiều client đồng thời. */
 static int set_non_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {
@@ -52,7 +51,6 @@ static int set_non_blocking(int fd) {
     return 0;
 }
 
-/* Loại bỏ ký tự xuống dòng ở cuối dữ liệu người dùng gửi lên. */
 static void trim_line(char *text) {
     size_t length = strlen(text);
     while (length > 0 && (text[length - 1] == '\n' || text[length - 1] == '\r')) {
@@ -61,90 +59,47 @@ static void trim_line(char *text) {
     }
 }
 
-/* Chuẩn hóa một từ không dấu về dạng chỉ gồm chữ và số để ghép email. */
-static void extract_name_token(const char *source, char *output, size_t output_size, int uppercase_first) {
+static void normalize_name(const char *input, char *output, size_t output_size) {
     size_t output_index = 0;
+    int previous_was_separator = 1;
 
     if (output_size == 0) {
         return;
     }
 
-    for (size_t i = 0; source[i] != '\0' && output_index + 1 < output_size; ++i) {
-        unsigned char current = (unsigned char)source[i];
+    for (size_t i = 0; input[i] != '\0' && output_index + 1 < output_size; ++i) {
+        unsigned char current = (unsigned char)input[i];
 
-        if (!isalnum(current)) {
-            continue;
-        }
-
-        if (uppercase_first && output_index == 0) {
-            output[output_index++] = (char)toupper(current);
-        } else {
+        if (isalnum(current)) {
             output[output_index++] = (char)tolower(current);
+            previous_was_separator = 0;
+        } else if (isspace(current) || current == '_' || current == '-' || current == '.') {
+            if (!previous_was_separator && output_index + 1 < output_size) {
+                output[output_index++] = '.';
+                previous_was_separator = 1;
+            }
         }
+    }
+
+    while (output_index > 0 && output[output_index - 1] == '.') {
+        output_index--;
     }
 
     output[output_index] = '\0';
 }
 
-/* Tạo email theo quy tắc: TenCuoi.ChuCaiDau + 6 số cuối MSSV@sis.hust.edu.vn. */
 static void build_student_email(const char *full_name, const char *mssv, char *output, size_t output_size) {
-    char name_copy[128];
-    char *tokens[16];
-    int token_count = 0;
-    char given_name[64];
-    char initials[32];
-    char mssv_suffix[32];
+    char normalized_name[128];
 
-    strncpy(name_copy, full_name, sizeof(name_copy) - 1);
-    name_copy[sizeof(name_copy) - 1] = '\0';
-
-    char *token = strtok(name_copy, " \t");
-    while (token != NULL && token_count < (int)(sizeof(tokens) / sizeof(tokens[0]))) {
-        tokens[token_count++] = token;
-        token = strtok(NULL, " \t");
-    }
-
-    if (strlen(mssv) > 2) {
-        strncpy(mssv_suffix, mssv + 2, sizeof(mssv_suffix) - 1);
-        mssv_suffix[sizeof(mssv_suffix) - 1] = '\0';
-    } else {
-        strncpy(mssv_suffix, mssv, sizeof(mssv_suffix) - 1);
-        mssv_suffix[sizeof(mssv_suffix) - 1] = '\0';
-    }
-
-    if (token_count == 0) {
-        snprintf(output, output_size, "Sinhvien.%s@sis.hust.edu.vn", mssv_suffix);
+    normalize_name(full_name, normalized_name, sizeof(normalized_name));
+    if (normalized_name[0] == '\0') {
+        snprintf(output, output_size, "sinhvien.%s@sv.hcmut.edu.vn", mssv);
         return;
     }
 
-    extract_name_token(tokens[token_count - 1], given_name, sizeof(given_name), 1);
-    if (given_name[0] == '\0') {
-        strcpy(given_name, "Sinhvien");
-    }
-
-    initials[0] = '\0';
-    for (int i = 0; i < token_count - 1 && strlen(initials) + 1 < sizeof(initials); ++i) {
-        char folded_token[32];
-        size_t initials_length = strlen(initials);
-
-        extract_name_token(tokens[i], folded_token, sizeof(folded_token), 0);
-        if (folded_token[0] == '\0') {
-            continue;
-        }
-
-        initials[initials_length] = (char)toupper((unsigned char)folded_token[0]);
-        initials[initials_length + 1] = '\0';
-    }
-
-    if (initials[0] == '\0') {
-        snprintf(output, output_size, "%s.%s@sis.hust.edu.vn", given_name, mssv_suffix);
-        return;
-    }
-
-    snprintf(output, output_size, "%s.%s%s@sis.hust.edu.vn", given_name, initials, mssv_suffix);
+    snprintf(output, output_size, "%s.%s@sv.hcmut.edu.vn", normalized_name, mssv);
 }
 
-/* Thu hồi tài nguyên của một phiên client trước khi tái sử dụng slot. */
 static void reset_session(struct client_session *session) {
     if (session->active) {
         close(session->socket_fd);
@@ -154,7 +109,6 @@ static void reset_session(struct client_session *session) {
     session->socket_fd = -1;
 }
 
-/* Nạp thông điệp phản hồi vào bộ đệm gửi của client hiện tại. */
 static void queue_message(struct client_session *session, const char *message, int close_after_send) {
     session->write_length = strlen(message);
     if (session->write_length >= sizeof(session->write_buffer)) {
@@ -167,7 +121,6 @@ static void queue_message(struct client_session *session, const char *message, i
     session->close_after_send = close_after_send;
 }
 
-/* Tìm một vị trí trống trong mảng session để gán cho client mới. */
 static int find_free_slot(struct client_session sessions[], int max_sessions) {
     for (int i = 0; i < max_sessions; ++i) {
         if (!sessions[i].active) {
@@ -178,7 +131,6 @@ static int find_free_slot(struct client_session sessions[], int max_sessions) {
     return -1;
 }
 
-/* Đóng kết nối và ghi log ngắn gọn ra màn hình. */
 static void close_session(struct client_session *session) {
     char client_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &session->address.sin_addr, client_ip, sizeof(client_ip));
@@ -186,7 +138,6 @@ static void close_session(struct client_session *session) {
     reset_session(session);
 }
 
-/* Xử lý một dòng hoàn chỉnh mà client vừa gửi, tùy theo trạng thái hiện tại. */
 static void handle_complete_line(struct client_session *session, char *line) {
     trim_line(line);
 
@@ -223,7 +174,6 @@ static void handle_complete_line(struct client_session *session, char *line) {
     }
 }
 
-/* Đọc dữ liệu không chặn từ client và ghép cho tới khi đủ một dòng hoàn chỉnh. */
 static int process_read(struct client_session *session) {
     while (1) {
         ssize_t received = recv(session->socket_fd,
@@ -271,7 +221,6 @@ static int process_read(struct client_session *session) {
     }
 }
 
-/* Gửi dần nội dung trong bộ đệm ra socket, xử lý cả trường hợp gửi chưa hết. */
 static int process_write(struct client_session *session) {
     while (session->write_sent < session->write_length) {
         ssize_t sent = send(session->socket_fd,
@@ -313,7 +262,6 @@ static int process_write(struct client_session *session) {
 }
 
 int main(int argc, char *argv[]) {
-    /* Chương trình chỉ nhận một tham số là cổng lắng nghe của server. */
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <port>\n", argv[0]);
         return EXIT_FAILURE;
@@ -325,7 +273,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Tạo listener TCP, cho phép tái sử dụng cổng và chuyển sang non-blocking. */
     int listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listener < 0) {
         perror("socket() failed");
@@ -345,7 +292,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Gắn địa chỉ IP bất kỳ của máy hiện tại với cổng do người dùng cung cấp. */
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -364,7 +310,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Khởi tạo toàn bộ danh sách session cho nhiều client đồng thời. */
     struct client_session sessions[MAX_CLIENTS];
     for (int i = 0; i < MAX_CLIENTS; ++i) {
         memset(&sessions[i], 0, sizeof(sessions[i]));
@@ -372,10 +317,9 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Email server non-blocking dang lang nghe cong %d\n", port);
-   
+    printf("Quy uoc email mac dinh: tenrutgon.mssv@sv.hcmut.edu.vn\n");
 
     while (1) {
-        /* Mỗi vòng lặp xây lại tập socket cần đọc và ghi cho select(). */
         fd_set read_set;
         fd_set write_set;
         FD_ZERO(&read_set);
@@ -410,7 +354,6 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        /* Nhận hết các kết nối mới đang chờ và đưa từng client vào mảng session. */
         if (FD_ISSET(listener, &read_set)) {
             while (1) {
                 struct sockaddr_in client_addr;
@@ -449,7 +392,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /* Duyệt các client đang hoạt động để xử lý đọc/ghi tương ứng. */
         for (int i = 0; i < MAX_CLIENTS; ++i) {
             if (!sessions[i].active) {
                 continue;

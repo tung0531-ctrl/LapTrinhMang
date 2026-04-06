@@ -6,7 +6,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-/* Nhận một dòng văn bản hoàn chỉnh từ server, kết thúc khi gặp ký tự xuống dòng. */
 static int recv_line(int sockfd, char *buffer, size_t buffer_size) {
     size_t index = 0;
 
@@ -31,7 +30,6 @@ static int recv_line(int sockfd, char *buffer, size_t buffer_size) {
     return (int)index;
 }
 
-/* Nhận prompt dạng "Ho ten: " hoặc "MSSV: " mà server gửi cho client. */
 static int recv_prompt(int sockfd, char *buffer, size_t buffer_size) {
     size_t index = 0;
 
@@ -63,7 +61,6 @@ static int recv_prompt(int sockfd, char *buffer, size_t buffer_size) {
     return (int)index;
 }
 
-/* Gửi hết chuỗi văn bản người dùng nhập sang server. */
 static void send_text(int sockfd, const char *text) {
     size_t sent_total = 0;
     size_t length = strlen(text);
@@ -80,7 +77,6 @@ static void send_text(int sockfd, const char *text) {
 }
 
 int main(int argc, char *argv[]) {
-    /* Client cần địa chỉ IP và cổng của email server. */
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <ip> <port>\n", argv[0]);
         return EXIT_FAILURE;
@@ -92,7 +88,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Tạo socket TCP và chuẩn bị thông tin địa chỉ server đích. */
     int client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (client < 0) {
         perror("socket() failed");
@@ -116,7 +111,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Thiết lập phiên làm việc: nhận prompt họ tên, gửi lại dữ liệu người dùng nhập. */
     char prompt[256];
     char input[256];
     char response[256];
@@ -133,7 +127,6 @@ int main(int argc, char *argv[]) {
     }
     send_text(client, input);
 
-    /* Tiếp tục nhận prompt MSSV và gửi phản hồi tương ứng. */
     if (recv_prompt(client, prompt, sizeof(prompt)) <= 0) {
         fprintf(stderr, "Khong nhan duoc prompt MSSV\n");
         close(client);
@@ -146,7 +139,6 @@ int main(int argc, char *argv[]) {
     }
     send_text(client, input);
 
-    /* In email cuối cùng mà server vừa tạo ra rồi đóng kết nối. */
     if (recv_line(client, response, sizeof(response)) > 0) {
         printf("%s", response);
     }
