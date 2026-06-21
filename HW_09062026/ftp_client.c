@@ -555,7 +555,7 @@ static int write_answer_file(const char *local_path, const unsigned char *data, 
 
     fclose(output);
     return 0;
-}//yes
+}//yes//
 
 static int upload_file(socket_t control_socket, const char *remote_name, const unsigned char *data, size_t size) {
     socket_t data_socket;
